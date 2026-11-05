@@ -10,7 +10,9 @@ import android.speech.SpeechRecognizer
 class VoiceListener(
     private val context: Context,
     private val alTerminar: (String) -> Unit,
-    private val alCambiarEstado: (String) -> Unit
+    private val alCambiarEstado: (String) -> Unit,
+    private val alCambiarNivel: (Float) -> Unit = {},
+    private val alFallar: () -> Unit = {}
 ) {
 
     private var recognizer: SpeechRecognizer? = null
@@ -18,6 +20,7 @@ class VoiceListener(
     fun empezar() {
         if (!SpeechRecognizer.isRecognitionAvailable(context)) {
             alCambiarEstado("Tu teléfono no tiene reconocimiento de voz disponible")
+            alFallar()
             return
         }
         recognizer?.destroy()
@@ -25,19 +28,27 @@ class VoiceListener(
             setRecognitionListener(object : RecognitionListener {
                 override fun onReadyForSpeech(params: Bundle?) = alCambiarEstado("Te escucho...")
                 override fun onBeginningOfSpeech() = alCambiarEstado("Escuchando...")
-                override fun onRmsChanged(rmsdB: Float) {}
+                override fun onRmsChanged(rmsdB: Float) = alCambiarNivel(rmsdB)
                 override fun onBufferReceived(buffer: ByteArray?) {}
                 override fun onEndOfSpeech() = alCambiarEstado("Procesando...")
-                override fun onError(error: Int) = alCambiarEstado("No te entendí (código $error)")
                 override fun onEvent(eventType: Int, params: Bundle?) {}
                 override fun onPartialResults(partialResults: Bundle?) {}
+
+                override fun onError(error: Int) {
+                    alCambiarEstado("No te entendí (código $error)")
+                    alFallar()
+                }
 
                 override fun onResults(results: Bundle?) {
                     val texto = results
                         ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                         ?.firstOrNull()
-                    if (texto.isNullOrBlank()) alCambiarEstado("No te entendí")
-                    else alTerminar(texto)
+                    if (texto.isNullOrBlank()) {
+                        alCambiarEstado("No te entendí")
+                        alFallar()
+                    } else {
+                        alTerminar(texto)
+                    }
                 }
             })
         }
