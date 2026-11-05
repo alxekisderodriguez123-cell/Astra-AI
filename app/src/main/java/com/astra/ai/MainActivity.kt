@@ -7,6 +7,7 @@ import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -15,6 +16,7 @@ class MainActivity : Activity() {
 
     private lateinit var speaker: Speaker
     private lateinit var voz: VoiceListener
+    private lateinit var router: ActionRouter
     private lateinit var orb: OrbView
     private lateinit var estado: TextView
     private lateinit var escuchado: TextView
@@ -54,10 +56,14 @@ class MainActivity : Activity() {
                 cornerRadius = 100f * dp
                 setColor(Color.parseColor("#6C5CE7"))
             }
-            setPadding((36 * dp).toInt(), 0, (36 * dp).toInt(), 0)
+            setPadding((40 * dp).toInt(), 0, (40 * dp).toInt(), 0)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, (52 * dp).toInt()
+            )
             setOnClickListener { pedirYEscuchar() }
         }
 
+        router = ActionRouter(this)
         speaker = Speaker(this) { hablando ->
             runOnUiThread {
                 orb.ponerEstado(if (hablando) OrbState.HABLANDO else OrbState.QUIETO)
@@ -69,7 +75,9 @@ class MainActivity : Activity() {
             alTerminar = { texto ->
                 escuchado.text = "Dijiste: $texto"
                 estado.text = "Listo"
-                speaker.hablar("Dijiste $texto")
+                val respuesta = router.ejecutar(texto)
+                    ?: "Dijiste $texto. Todavía no sé hacer eso"
+                speaker.hablar(respuesta)
             },
             alCambiarEstado = { estado.text = it },
             alCambiarNivel = { orb.ponerNivel(it) },
