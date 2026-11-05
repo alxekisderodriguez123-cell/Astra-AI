@@ -21,6 +21,12 @@ class MainActivity : Activity() {
     private lateinit var estado: TextView
     private lateinit var escuchado: TextView
 
+    private val permisos = arrayOf(
+        Manifest.permission.RECORD_AUDIO,
+        Manifest.permission.READ_CONTACTS,
+        Manifest.permission.CALL_PHONE
+    )
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val dp = resources.displayMetrics.density
@@ -96,22 +102,31 @@ class MainActivity : Activity() {
         })
     }
 
+    private fun hayMicrofono() =
+        checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+
     private fun pedirYEscuchar() {
-        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-            orb.ponerEstado(OrbState.ESCUCHANDO)
-            voz.empezar()
+        val faltan = permisos.filter { checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+        val prefs = getSharedPreferences("astra", MODE_PRIVATE)
+        val yaPregunte = prefs.getBoolean("permisos_pedidos", false)
+
+        if (faltan.isEmpty() || (hayMicrofono() && yaPregunte)) {
+            empezarAEscuchar()
         } else {
-            requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 1)
+            prefs.edit().putBoolean("permisos_pedidos", true).apply()
+            requestPermissions(faltan.toTypedArray(), 1)
         }
+    }
+
+    private fun empezarAEscuchar() {
+        orb.ponerEstado(OrbState.ESCUCHANDO)
+        voz.empezar()
     }
 
     override fun onRequestPermissionsResult(code: Int, permisos: Array<out String>, resultados: IntArray) {
         super.onRequestPermissionsResult(code, permisos, resultados)
-        if (code == 1 && resultados.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
-            orb.ponerEstado(OrbState.ESCUCHANDO)
-            voz.empezar()
-        } else {
-            estado.text = "Sin permiso de micrófono"
+        if (code == 1) {
+            if (hayMicrofono()) empezarAEscuchar() else estado.text = "Sin permiso de micrófono"
         }
     }
 
