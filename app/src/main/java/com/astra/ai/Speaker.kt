@@ -27,8 +27,15 @@ class Speaker(
         }
     }
 
-    fun hablar(texto: String) {
-        if (listo) tts.speak(texto, TextToSpeech.QUEUE_FLUSH, null, "astra")
+    /** Devuelve false si todavía no puede hablar. */
+    fun hablar(texto: String): Boolean {
+        if (!listo) return false
+        tts.speak(texto, TextToSpeech.QUEUE_FLUSH, null, "astra")
+        return true
+    }
+
+    fun callar() {
+        if (listo) tts.stop()
     }
 
     fun cerrar() {
