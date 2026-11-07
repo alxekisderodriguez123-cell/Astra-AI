@@ -12,7 +12,8 @@ import android.widget.FrameLayout
 import android.view.inputmethod.InputMethodManager
 import com.astra.ai.chat.ChatScreen
 import com.astra.ai.chat.ChatStore
-import com.google.firebase.Firebase
+import com.google.firebase.FirebaseApp
+import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
 
 class MainActivity : Activity() {
@@ -31,12 +32,13 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Inicializar Firebase y App Check
-Firebase.initialize(context = this)
+    // Inicializar Firebase y App Check
+FirebaseApp.initializeApp(this)
 
-Firebase.appCheck.installAppCheckProviderFactory(
-    DebugAppCheckProviderFactory.getInstance()
-)
+FirebaseAppCheck.getInstance()
+    .installAppCheckProviderFactory(
+        DebugAppCheckProviderFactory.getInstance()
+    )
 
         window.statusBarColor = Color.parseColor("#050814")
         window.navigationBarColor = Color.parseColor("#0E1A3F")
