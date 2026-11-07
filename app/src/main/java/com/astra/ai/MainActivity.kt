@@ -230,6 +230,7 @@ class MainActivity : Activity() {
 
     private fun alCambiarHabla(h: Boolean) {
         hablando = h
+        MusicService.atenuar(h)
         if (h) {
             estadoOrbe(OrbState.HABLANDO)
         } else {
