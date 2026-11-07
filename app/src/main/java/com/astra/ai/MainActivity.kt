@@ -39,11 +39,7 @@ class MainActivity : Activity() {
     private var vozActiva = true
     private val textoInicial = "Toca el micrófono o escribe una orden"
 
-    private val permisos = arrayOf(
-        Manifest.permission.RECORD_AUDIO,
-        Manifest.permission.READ_CONTACTS,
-        Manifest.permission.CALL_PHONE
-    )
+    private val permisos = Permisos.lista()
 
     private fun dp(v: Float) = (v * densidad).toInt()
 
