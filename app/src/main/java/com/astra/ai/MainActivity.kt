@@ -64,8 +64,8 @@ class MainActivity : Activity() {
 
         construirPantalla()
 
-        if (!prefs.getBoolean("permisos_pedidos", false)) {
-            prefs.edit().putBoolean("permisos_pedidos", true).apply()
+        if (!prefs.getBoolean("permisos_v2", false)) {
+            prefs.edit().putBoolean("permisos_v2", true).apply()
             requestPermissions(permisos, 1)
         }
     }
