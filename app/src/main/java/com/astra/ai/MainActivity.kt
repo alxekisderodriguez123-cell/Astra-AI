@@ -39,6 +39,21 @@ FirebaseAppCheck.getInstance()
     .installAppCheckProviderFactory(
         DebugAppCheckProviderFactory.getInstance()
     )
+    FirebaseAppCheck.getInstance()
+    .getAppCheckToken(false)
+    .addOnSuccessListener {
+        android.util.Log.d(
+            "AstraAppCheck",
+            "Token de App Check obtenido correctamente"
+        )
+    }
+    .addOnFailureListener { error ->
+        android.util.Log.e(
+            "AstraAppCheck",
+            "Error obteniendo token",
+            error
+        )
+    }
 
         window.statusBarColor = Color.parseColor("#050814")
         window.navigationBarColor = Color.parseColor("#0E1A3F")
