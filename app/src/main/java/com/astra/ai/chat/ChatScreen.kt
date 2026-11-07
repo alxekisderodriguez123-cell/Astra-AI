@@ -114,7 +114,7 @@ class ChatScreen(
 
         scroll.addView(
             messages,
-            ScrollView.LayoutParams(
+            FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT
             )
