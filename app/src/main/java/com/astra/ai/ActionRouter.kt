@@ -12,6 +12,7 @@ import com.astra.ai.actions.Mapas
 import com.astra.ai.actions.Mensaje
 import com.astra.ai.actions.Musica
 import com.astra.ai.actions.Temporizador
+import com.astra.ai.actions.TokenAppCheck
 import com.astra.ai.actions.Volumen
 import com.astra.ai.actions.normalizar
 
@@ -20,6 +21,7 @@ class ActionRouter(context: Context) {
     private var ultimoOriginal = ""
 
     private val acciones: List<Accion> = listOf(
+        TokenAppCheck(context),
         Llamar(context),
         Mensaje(context) { ultimoOriginal },
         Alarma(context),
