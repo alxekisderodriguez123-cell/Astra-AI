@@ -197,12 +197,15 @@ ${datosEnVivo()}
         val todo = "$clase $msg"
 
         return when {
+            "app check" in todo || "appcheck" in todo || "app_check" in todo ->
+                "Falta registrar el token de App Check en Firebase."
+
             "quota" in todo || "429" in todo || "exhausted" in todo ->
                 "Llegué al límite gratuito de la IA. Intenta de nuevo en un minuto."
 
             "servicedisabled" in todo || "403" in todo || "permission" in todo ||
                 "not enabled" in todo || "has not been used" in todo || "disabled" in todo ->
-                "La IA todavía no está activada en Firebase."
+                "Firebase rechazó la solicitud de la IA. Revisa App Check y que la IA esté activada."
 
             "apikey" in todo || "api key" in todo || "api_key" in todo ->
                 "La clave de la IA no es válida."
