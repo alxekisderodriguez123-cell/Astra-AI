@@ -1,4 +1,3 @@
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
@@ -32,4 +31,6 @@ dependencies {
 
     implementation("com.google.firebase:firebase-ai")
     implementation("com.google.firebase:firebase-appcheck-debug")
+
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
 }
