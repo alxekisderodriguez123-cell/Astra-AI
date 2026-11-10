@@ -23,10 +23,13 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
+/** Una combinación de modelo + búsqueda de Google que Astra puede intentar. */
+private data class ConfigIA(val modelo: String, val busqueda: Boolean)
+
 /**
  * Cerebro de IA de Astra (Gemini a través de Firebase AI Logic, plan gratuito Spark).
  *
- * Sirve para: conversación básica, preguntas con internet (búsqueda de Google)
+ * Sirve para: conversación básica, preguntas con internet (búsqueda de Google, si el plan la permite)
  * y preguntas sobre el teléfono. NO ejecuta acciones: eso lo hace ActionRouter.
  */
 class AstraCerebro(context: Context) {
@@ -34,25 +37,30 @@ class AstraCerebro(context: Context) {
     companion object {
         private const val TAG = "AstraIA"
 
-        // Modelo gratuito, rápido y sin "pensar" de más (respuestas cortas).
-        // Si algún día Google lo retira, cambia solo este nombre.
-        private const val MODELO = "gemini-2.5-flash-lite"
+        // Se prueban en orden. Si una falla por modelo o por búsqueda no disponible,
+        // Astra pasa a la siguiente y recuerda cuál funcionó.
+        // Los modelos 2.5 ya no se entregan a proyectos nuevos, por eso no están aquí.
+        private val CONFIGS = listOf(
+            ConfigIA("gemini-3.5-flash-lite", true),
+            ConfigIA("gemini-3.5-flash-lite", false),
+            ConfigIA("gemini-3.1-flash-lite", false)
+        )
 
         // Nombre comercial del teléfono (el sistema solo entrega un código como "X6xxx").
         private const val NOMBRE_COMERCIAL = "Infinix Hot 60 Pro"
 
-        // Permite a Gemini buscar en internet datos actuales (clima, noticias, resultados...).
-        private const val USAR_BUSQUEDA = true
-
         private const val MAX_TURNOS = 8          // turnos de conversación que recuerda
-        private const val TIMEOUT_MS = 25_000L    // espera máxima por respuesta
+        private const val TIMEOUT_MS = 30_000L    // espera máxima por respuesta
     }
 
     private val appContext = context.applicationContext
     private val dispositivo = DeviceEngine(appContext)
     private val historial = ArrayList<Content>()
 
-    /** Detalle técnico del último fallo (vacío si todo salió bien). Sirve para depurar. */
+    @Volatile
+    private var indiceOk = 0
+
+    /** Detalle técnico del último fallo o del modo usado (vacío si todo salió normal). */
     @Volatile
     var ultimoDetalle: String = ""
         private set
@@ -62,15 +70,39 @@ class AstraCerebro(context: Context) {
         ultimoDetalle = ""
         try {
             withTimeout(TIMEOUT_MS) {
-                val chat = crearModelo().startChat(copiaHistorial())
-                val respuesta = chat.sendMessage(pregunta)
-                val texto = limpiar(respuesta.text.orEmpty())
-                if (texto.isBlank()) {
-                    "No encontré una respuesta para eso."
-                } else {
-                    guardar(pregunta, texto)
-                    texto
+                var ultimoError: Exception? = null
+                var i = indiceOk
+
+                while (i < CONFIGS.size) {
+                    val cfg = CONFIGS[i]
+                    try {
+                        val chat = crearModelo(cfg).startChat(copiaHistorial())
+                        val respuesta = chat.sendMessage(pregunta)
+                        val texto = limpiar(respuesta.text.orEmpty())
+
+                        indiceOk = i
+                        if (i > 0) {
+                            ultimoDetalle = cfg.modelo +
+                                if (cfg.busqueda) "" else " (sin búsqueda web)"
+                        }
+
+                        return@withTimeout if (texto.isBlank()) {
+                            "No encontré una respuesta para eso."
+                        } else {
+                            guardar(pregunta, texto)
+                            texto
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Falló ${cfg.modelo} (búsqueda=${cfg.busqueda})", e)
+                        ultimoError = e
+                        if (!esRecuperable(e, cfg)) throw e
+                        i++
+                    }
                 }
+
+                throw ultimoError ?: IllegalStateException("Sin configuración de IA")
             }
         } catch (e: TimeoutCancellationException) {
             ultimoDetalle = "Timeout"
@@ -79,7 +111,7 @@ class AstraCerebro(context: Context) {
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "Error de IA", e)
-            ultimoDetalle = "${e.javaClass.simpleName}: ${e.message.orEmpty().take(140)}"
+            ultimoDetalle = "${e.javaClass.simpleName}: ${e.message.orEmpty().take(160)}"
             mensajeError(e)
         }
     }
@@ -93,25 +125,32 @@ class AstraCerebro(context: Context) {
     // Modelo
     // ---------------------------
 
-    private fun crearModelo() = Firebase.ai(backend = GenerativeBackend.googleAI())
+    private fun crearModelo(cfg: ConfigIA) = Firebase.ai(backend = GenerativeBackend.googleAI())
         .generativeModel(
-            modelName = MODELO,
+            modelName = cfg.modelo,
             generationConfig = generationConfig {
-                maxOutputTokens = 256
+                maxOutputTokens = 300
                 temperature = 0.6f
             },
-            tools = if (USAR_BUSQUEDA) listOf(Tool.googleSearch()) else null,
-            systemInstruction = content { text(instrucciones()) }
+            tools = if (cfg.busqueda) listOf(Tool.googleSearch()) else null,
+            systemInstruction = content { text(instrucciones(cfg.busqueda)) }
         )
 
-    private fun instrucciones(): String = """
+    private fun instrucciones(conBusqueda: Boolean): String {
+        val datosActuales = if (conBusqueda) {
+            "- Para datos actuales (clima, noticias, resultados, precios, fechas) usa la búsqueda de Google."
+        } else {
+            "- No tienes acceso a internet. Si piden datos actuales (clima, noticias, resultados, precios), di con honestidad que ahora no puedes consultarlos."
+        }
+
+        return """
 Eres Astra, el asistente de voz de este teléfono Android. Hablas con tu dueño.
 
 REGLAS:
 - Responde siempre en español, en 1 a 3 frases cortas. Tus respuestas se leen en voz alta.
 - No uses markdown, listas, emojis, asteriscos ni enlaces.
 - Si no sabes algo o no estás seguro, dilo con honestidad. No inventes datos.
-- Para datos actuales (clima, noticias, resultados, precios, fechas) usa la búsqueda de Google.
+$datosActuales
 - Tú solo conversas y respondes. NO puedes ejecutar acciones del teléfono (llamar, mensajes, alarmas, temporizadores, linterna, volumen, brillo, música, mapas, abrir apps). Si te lo piden, di que lo pida como orden directa, por ejemplo: "Astra, enciende la linterna".
 - Para preguntas sobre el teléfono usa solo la ficha de abajo. Si el dato no aparece, di que no lo sabes.
 
@@ -121,6 +160,7 @@ ${dispositivo.getAssistantContext()}
 DATOS ACTUALES:
 ${datosEnVivo()}
 """.trimIndent()
+    }
 
     private fun datosEnVivo(): String {
         val sb = StringBuilder()
@@ -180,7 +220,7 @@ ${datosEnVivo()}
     }
 
     // ---------------------------
-    // Texto
+    // Texto y errores
     // ---------------------------
 
     /** Quita lo que suena mal al leerlo en voz alta. */
@@ -191,10 +231,28 @@ ${datosEnVivo()}
         .replace(Regex("\\s+"), " ")
         .trim()
 
+    private fun textoError(e: Exception): String =
+        "${e.javaClass.simpleName} ${e.message.orEmpty()}".lowercase()
+
+    /**
+     * Decide si vale la pena probar la siguiente opción.
+     * Nunca se reintenta con App Check o sin internet. El límite de cuota solo se reintenta
+     * si la opción usaba búsqueda (la búsqueda puede tener su propio límite).
+     */
+    private fun esRecuperable(e: Exception, cfg: ConfigIA): Boolean {
+        val t = textoError(e)
+
+        val appCheckOInternet = "app check" in t || "appcheck" in t || "app_check" in t ||
+            "unknownhost" in t || "unable to resolve" in t || "network" in t ||
+            "timeout" in t || "ioexception" in t
+        if (appCheckOInternet) return false
+
+        val cuota = "quota" in t || "429" in t || "exhausted" in t
+        return if (cuota) cfg.busqueda else true
+    }
+
     private fun mensajeError(e: Exception): String {
-        val clase = e.javaClass.simpleName.lowercase()
-        val msg = e.message.orEmpty().lowercase()
-        val todo = "$clase $msg"
+        val todo = textoError(e)
 
         return when {
             "app check" in todo || "appcheck" in todo || "app_check" in todo ->
@@ -202,6 +260,9 @@ ${datosEnVivo()}
 
             "quota" in todo || "429" in todo || "exhausted" in todo ->
                 "Llegué al límite gratuito de la IA. Intenta de nuevo en un minuto."
+
+            "no longer available" in todo || "404" in todo || "not found" in todo ->
+                "El modelo de IA ya no está disponible. Hay que cambiarlo."
 
             "servicedisabled" in todo || "403" in todo || "permission" in todo ||
                 "not enabled" in todo || "has not been used" in todo || "disabled" in todo ->
@@ -216,9 +277,6 @@ ${datosEnVivo()}
             "unknownhost" in todo || "unable to resolve" in todo || "connect" in todo ||
                 "network" in todo || "timeout" in todo || "ioexception" in todo ->
                 "No tengo internet ahora mismo."
-
-            "404" in todo || "not found" in todo ->
-                "El modelo de IA no está disponible."
 
             else -> "No pude conectar con la IA."
         }
