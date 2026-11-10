@@ -16,6 +16,18 @@ android {
         versionName = "1.0"
     }
 
+    // Misma firma en todos los builds: así el APK nuevo se instala encima del anterior
+    // y el token de depuración de App Check no cambia.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storeType = "pkcs12"
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
