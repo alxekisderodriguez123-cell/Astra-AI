@@ -1,5 +1,4 @@
-{
-  "project_info": {
+ "project_info": {
     "project_number": "967823362584",
     "project_id": "astra-ai-be1f2",
     "storage_bucket": "astra-ai-be1f2.firebasestorage.app"
@@ -7,7 +6,7 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:967823362584:android:0270533a74e8599893916d",
+        "mobilesdk_app_id": "1:967823362584:android:795b164093957ba993916d",
         "android_client_info": {
           "package_name": "com.astra.ai"
         }
