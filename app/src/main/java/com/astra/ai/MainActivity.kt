@@ -1,4 +1,3 @@
-
 package com.astra.ai
 
 import android.Manifest
@@ -15,6 +14,12 @@ import com.astra.ai.chat.ChatStore
 import com.google.firebase.FirebaseApp
 import com.google.firebase.appcheck.FirebaseAppCheck
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 
 class MainActivity : Activity() {
 
@@ -23,6 +28,10 @@ class MainActivity : Activity() {
     private lateinit var router: ActionRouter
     private lateinit var chat: ChatScreen
     private lateinit var chatStore: ChatStore
+    private lateinit var cerebro: AstraCerebro
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var trabajoIA: Job? = null
 
     private var ocupado = false
     private var hablando = false
@@ -32,28 +41,29 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-    // Inicializar Firebase y App Check
-FirebaseApp.initializeApp(this)
+        // Inicializar Firebase y App Check
+        FirebaseApp.initializeApp(this)
 
-FirebaseAppCheck.getInstance()
-    .installAppCheckProviderFactory(
-        DebugAppCheckProviderFactory.getInstance()
-    )
-    FirebaseAppCheck.getInstance()
-    .getAppCheckToken(false)
-    .addOnSuccessListener {
-        android.util.Log.d(
-            "AstraAppCheck",
-            "Token de App Check obtenido correctamente"
-        )
-    }
-    .addOnFailureListener { error ->
-        android.util.Log.e(
-            "AstraAppCheck",
-            "Error obteniendo token",
-            error
-        )
-    }
+        FirebaseAppCheck.getInstance()
+            .installAppCheckProviderFactory(
+                DebugAppCheckProviderFactory.getInstance()
+            )
+
+        FirebaseAppCheck.getInstance()
+            .getAppCheckToken(false)
+            .addOnSuccessListener {
+                android.util.Log.d(
+                    "AstraAppCheck",
+                    "Token de App Check obtenido correctamente"
+                )
+            }
+            .addOnFailureListener { error ->
+                android.util.Log.e(
+                    "AstraAppCheck",
+                    "Error obteniendo token",
+                    error
+                )
+            }
 
         window.statusBarColor = Color.parseColor("#050814")
         window.navigationBarColor = Color.parseColor("#0E1A3F")
@@ -62,6 +72,7 @@ FirebaseAppCheck.getInstance()
         vozActiva = prefs.getBoolean("voz_activa", true)
 
         router = ActionRouter(this)
+        cerebro = AstraCerebro(this)
         chatStore = ChatStore(this)
 
         speaker = Speaker(this) { h ->
@@ -149,19 +160,59 @@ FirebaseAppCheck.getInstance()
     // Procesamiento de mensajes
     // ---------------------------
 
-    private fun procesar(texto: String) {
+    private fun procesar(textoOriginal: String) {
 
+        trabajoIA?.cancel()
+        trabajoIA = null
         ocupado = false
+
+        val orden = Invocacion.analizar(textoOriginal)
+
         chat.setStatus("Procesando...")
+        chat.addMessage("user", textoOriginal)
 
-        chat.addMessage("user", texto)
+        // "Ey Astra" / "Astra" solos: solo esperan una orden.
+        if (orden.texto.isBlank()) {
+            responder("Dime, te escucho.")
+            return
+        }
 
-        val respuesta = try {
-            router.ejecutar(texto)
-                ?: "Todavía no sé hacer eso. Puedes preguntarme otra cosa."
+        // 1) Las acciones siempre van primero: son instantáneas y no gastan cuota de IA.
+        val respuestaAccion = try {
+            router.ejecutar(orden.texto)
         } catch (e: Exception) {
             "No pude completar esa acción. Inténtalo nuevamente."
         }
+
+        if (respuestaAccion != null) {
+            responder(respuestaAccion)
+            return
+        }
+
+        // 2) "Astra ..." es solo para acciones.
+        if (orden.modo == Modo.ACCION) {
+            responder("Todavía no sé hacer eso. Si quieres conversar, di Ey Astra.")
+            return
+        }
+
+        // 3) "Ey Astra ..." o sin prefijo: conversa la IA.
+        ocupado = true
+        chat.setOrbState(OrbState.QUIETO)
+        chat.setStatus("Pensando...")
+
+        trabajoIA = scope.launch {
+            val respuesta = cerebro.responder(orden.texto)
+            responder(respuesta)
+
+            val detalle = cerebro.ultimoDetalle
+            if (detalle.isNotEmpty()) {
+                chat.setStatus("IA: $detalle")
+            }
+        }
+    }
+
+    /** Muestra la respuesta en el chat y la dice en voz alta si la voz está activa. */
+    private fun responder(respuesta: String) {
 
         chat.addMessage("assistant", respuesta)
 
@@ -221,6 +272,9 @@ FirebaseAppCheck.getInstance()
     }
 
     private fun cancelar() {
+
+        trabajoIA?.cancel()
+        trabajoIA = null
 
         voz.cancelar()
         speaker.callar()
@@ -294,6 +348,7 @@ FirebaseAppCheck.getInstance()
 
     override fun onDestroy() {
 
+        scope.cancel()
         voz.cerrar()
         speaker.cerrar()
         chatStore.close()
